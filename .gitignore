@@ -1,0 +1,6 @@
+# Virtualenv created by install.sh
+venv/
+
+# Python bytecode
+__pycache__/
+*.pyc

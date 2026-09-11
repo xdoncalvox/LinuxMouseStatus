@@ -18,8 +18,6 @@ venv/bin/rivalcfg --battery-level     # raw battery read, bypassing this app
 
 There is no test suite, linter config, or build step. Verifying a change means running the app against real hardware (or stubbing `read_battery_status`).
 
-`venv/` and `__pycache__/` are tracked in git (there is no `.gitignore`), so don't stage changes to them.
-
 ## Dependencies
 
 - **GTK / PyGObject / AppIndicator come from apt, not pip.** The venv is created with `--system-site-packages` so it can see them. `requirements.txt` only lists `rivalcfg` (which pulls in `hidapi`).
