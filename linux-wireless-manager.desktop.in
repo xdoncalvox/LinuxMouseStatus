@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Linux Wireless Manager
+Comment=Battery status for wireless mice and keyboards
+Keywords=mouse;keyboard;battery;wireless;steelseries;logitech;
+Exec=__EXEC__
+Icon=__ICON__
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

@@ -1,4 +1,4 @@
-"""Entry point: `python3 -m steelseries_battery_monitor [--show-window]`."""
+"""Entry point: `python3 -m linux_wireless_manager [--show-window] [--verbose]`."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ import sys
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
-        prog="steelseries-battery-monitor",
+        prog="linux-wireless-manager",
         description=(
-            "Tray icon + detail window showing the battery level of a "
-            "SteelSeries Rival 650 Wireless mouse."
+            "Tray icons and a window showing the battery of wireless mice "
+            "and keyboards."
         ),
     )
     parser.add_argument(
         "--show-window",
         action="store_true",
-        help="Also open the detail window immediately on startup.",
+        help="Also open the main window immediately on startup.",
     )
     parser.add_argument(
         "--verbose",
@@ -53,7 +53,13 @@ def main(argv=None) -> int:
         return 1
 
     try:
-        from .app import BatteryMonitorApp
+        from . import devices  # noqa: F401 - imports rivalcfg and hidapi
+    except ImportError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    try:
+        from .app import WirelessManagerApp
     except (ImportError, ValueError) as exc:
         print(
             "Missing AppIndicator bindings (needed for the tray icon).\n"
@@ -65,7 +71,7 @@ def main(argv=None) -> int:
         )
         return 1
 
-    app = BatteryMonitorApp(show_window_on_start=args.show_window)  # noqa: F841
+    app = WirelessManagerApp(show_window_on_start=args.show_window)  # noqa: F841
 
     # Let Ctrl+C / SIGTERM stop the GTK main loop cleanly instead of hanging
     # or printing a traceback.

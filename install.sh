@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Installs the SteelSeries Rival 650 Wireless battery monitor on Ubuntu.
+# Installs Linux Wireless Manager on Ubuntu.
 #
 # What this does:
-#   1. Installs the system packages needed for the GTK tray icon and for
-#      talking to the mouse over USB/HID.
+#   1. Installs the system packages needed for the GTK tray icons, for
+#      talking to devices over USB/HID, and UPower (which reports Logitech
+#      and Bluetooth device batteries).
 #   2. Creates a Python virtualenv (with access to the system PyGObject
 #      packages, since those aren't reliably installable via pip) and
-#      installs `rivalcfg` into it.
-#   3. Installs a udev rule (via rivalcfg) so the mouse can be read without
-#      running as root.
+#      installs the Python dependencies into it.
+#   3. Installs a udev rule (via rivalcfg) so SteelSeries mice can be read
+#      without running as root.
 #   4. Registers the app in your application menu and, optionally, to start
-#      automatically when you log in.
+#      automatically when you log in. Entries left over from the app's old
+#      name, "SteelSeries Battery Monitor", are replaced.
 #
 # Safe to re-run.
 
@@ -18,13 +20,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/venv"
+APP_ID="linux-wireless-manager"
+OLD_APP_ID="steelseries-battery-monitor"
 
 echo "==> Installing system packages (requires sudo)..."
 sudo apt update
 sudo apt install -y \
     python3 python3-venv python3-dev \
     python3-gi gir1.2-gtk-3.0 \
-    build-essential libusb-1.0-0-dev libudev-dev libhidapi-hidraw0
+    build-essential libusb-1.0-0-dev libudev-dev libhidapi-hidraw0 \
+    upower
 
 # The AppIndicator GObject bindings package is named differently depending
 # on the Ubuntu release. Try the modern (Ayatana) one first, then the
@@ -44,38 +49,53 @@ echo "==> Creating virtualenv at $VENV_DIR ..."
 # GTK / AppIndicator bindings above, which are not pip-installable.
 python3 -m venv --system-site-packages "$VENV_DIR"
 
-echo "==> Installing rivalcfg into the virtualenv..."
+echo "==> Installing Python dependencies into the virtualenv..."
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install "rivalcfg>=4.9.1"
+"$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
 
-echo "==> Installing udev rule so the mouse can be read without root..."
+echo "==> Installing udev rule so SteelSeries mice can be read without root..."
 sudo "$VENV_DIR/bin/rivalcfg" --update-udev
 
 chmod +x "$SCRIPT_DIR/run.sh"
 
 echo "==> Registering application menu entry..."
-mkdir -p "$HOME/.local/share/applications"
-DESKTOP_FILE="$HOME/.local/share/applications/steelseries-battery-monitor.desktop"
-sed "s|__EXEC__|$SCRIPT_DIR/run.sh|; s|__ICON__|battery-good-symbolic|" \
-    "$SCRIPT_DIR/steelseries-battery-monitor.desktop.in" > "$DESKTOP_FILE"
+APPS_DIR="$HOME/.local/share/applications"
+AUTOSTART_DIR="$HOME/.config/autostart"
+DESKTOP_FILE="$APPS_DIR/$APP_ID.desktop"
 
-read -r -p "Start automatically when you log in? [Y/n] " AUTOSTART_ANSWER
-AUTOSTART_ANSWER="${AUTOSTART_ANSWER:-Y}"
+# Replace entries from the old name, remembering whether it autostarted.
+HAD_OLD_AUTOSTART=no
+if [[ -f "$AUTOSTART_DIR/$OLD_APP_ID.desktop" ]]; then
+    HAD_OLD_AUTOSTART=yes
+fi
+rm -f "$APPS_DIR/$OLD_APP_ID.desktop" "$AUTOSTART_DIR/$OLD_APP_ID.desktop"
+
+mkdir -p "$APPS_DIR"
+sed "s|__EXEC__|$SCRIPT_DIR/run.sh|; s|__ICON__|input-mouse|" \
+    "$SCRIPT_DIR/$APP_ID.desktop.in" > "$DESKTOP_FILE"
+
+if [[ "$HAD_OLD_AUTOSTART" == yes || -f "$AUTOSTART_DIR/$APP_ID.desktop" ]]; then
+    AUTOSTART_ANSWER=Y
+    echo "    Autostart was already enabled; keeping it."
+else
+    read -r -p "Start automatically when you log in? [Y/n] " AUTOSTART_ANSWER
+    AUTOSTART_ANSWER="${AUTOSTART_ANSWER:-Y}"
+fi
 if [[ "$AUTOSTART_ANSWER" =~ ^[Yy] ]]; then
-    mkdir -p "$HOME/.config/autostart"
-    cp "$DESKTOP_FILE" "$HOME/.config/autostart/steelseries-battery-monitor.desktop"
-    echo "    Autostart enabled (edit/remove ~/.config/autostart/steelseries-battery-monitor.desktop to change)."
+    mkdir -p "$AUTOSTART_DIR"
+    cp "$DESKTOP_FILE" "$AUTOSTART_DIR/$APP_ID.desktop"
+    echo "    Autostart enabled (edit/remove $AUTOSTART_DIR/$APP_ID.desktop to change)."
 fi
 
 cat <<EOF
 
 ==> Done.
 
-The mouse's USB dongle needs to be unplugged and replugged once (or you can
+The mouse's USB receiver needs to be unplugged and replugged once (or you can
 just reboot) for the new udev permission rule to take effect.
 
 Run it now with:
     $SCRIPT_DIR/run.sh
 
-Or find "SteelSeries Battery Monitor" in your application menu.
+Or find "Linux Wireless Manager" in your application menu.
 EOF
