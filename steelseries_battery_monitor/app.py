@@ -34,6 +34,9 @@ class BatteryMonitorApp:
     def __init__(self, show_window_on_start: bool = False):
         self._consecutive_failures = 0
         self._poll_lock = threading.Lock()  # avoid overlapping USB reads
+        # GLib source ID of the single pending scheduled poll, or None. Only
+        # touched on the GTK main thread.
+        self._next_poll_source: int | None = None
 
         self.indicator = AppIndicator3.Indicator.new(
             config.APP_ID,
@@ -95,21 +98,34 @@ class BatteryMonitorApp:
     # -- Polling ----------------------------------------------------------
 
     def poll_now(self) -> bool:
-        """Trigger a battery read in a background thread. Safe to call from
-        the GTK main thread (menu clicks, window button) or from a GLib
-        timeout. Returns False so it can be used directly as a GLib.idle_add
+        """Trigger a battery read in a background thread. Must be called on
+        the GTK main thread (menu clicks, window button, the scheduled-poll
+        timeout). Returns False so it can be used directly as a GLib.idle_add
         one-shot callback.
         """
         if not self._poll_lock.acquire(blocking=False):
             # A read is already in flight; don't pile up threads if the
-            # user mashes "Refresh Now".
+            # user mashes "Refresh Now". Leave any pending timeout alone:
+            # the in-flight read schedules the next poll when its result is
+            # applied, so the chain can't die here.
+            logger.debug("Read already in flight; ignoring poll request")
             return False
+
+        # This read supersedes whatever poll was scheduled, and its result
+        # will schedule the next one, so there is only ever one chain.
+        self._cancel_scheduled_poll()
+        logger.debug("Reading battery")
 
         def worker():
             try:
                 status = read_battery_status()
             except BatteryReadError as exc:
                 GLib.idle_add(self._apply_error, str(exc))
+            except Exception as exc:  # noqa: BLE001 - must not kill the poll chain
+                # _apply_status/_apply_error are the only places the next
+                # poll gets scheduled, so every read has to end in one.
+                logger.exception("Unexpected error while reading battery")
+                GLib.idle_add(self._apply_error, f"unexpected error: {exc}")
             else:
                 GLib.idle_add(
                     self._apply_status,
@@ -123,9 +139,31 @@ class BatteryMonitorApp:
         threading.Thread(target=worker, daemon=True).start()
         return False
 
+    def _schedule_poll(self, delay_seconds: int) -> None:
+        """Schedule the next poll, replacing any pending one. Main thread only."""
+        self._cancel_scheduled_poll()
+        self._next_poll_source = GLib.timeout_add_seconds(
+            delay_seconds, self._on_poll_timeout
+        )
+
+    def _cancel_scheduled_poll(self) -> None:
+        if self._next_poll_source is not None:
+            GLib.source_remove(self._next_poll_source)
+            self._next_poll_source = None
+
+    def _on_poll_timeout(self) -> bool:
+        # This source is finished once we return False; forget its ID first
+        # so poll_now() doesn't try to remove it.
+        self._next_poll_source = None
+        self.poll_now()
+        return False
+
     # -- Applying results back on the GTK main thread ----------------------
 
     def _apply_status(self, level: int, is_charging: bool, connection: str) -> bool:
+        # Schedule first so an exception in the UI updates below can't break
+        # the poll chain.
+        self._schedule_poll(config.POLL_INTERVAL_SECONDS)
         self._consecutive_failures = 0
 
         self.indicator.set_icon_full(icon_name_for(level, is_charging), config.APP_NAME)
@@ -138,10 +176,10 @@ class BatteryMonitorApp:
         self._battery_menu_item.set_label(label)
 
         self.window.update_status(level, is_charging, connection)
-        GLib.timeout_add_seconds(config.POLL_INTERVAL_SECONDS, self.poll_now)
         return False
 
     def _apply_error(self, message: str) -> bool:
+        self._schedule_poll(config.QUICK_RETRY_SECONDS)
         self._consecutive_failures += 1
 
         self.indicator.set_icon_full(icon_name_for(None, False), config.APP_NAME)
@@ -159,5 +197,4 @@ class BatteryMonitorApp:
         if self._consecutive_failures <= config.MAX_CONSECUTIVE_FAILURES_BEFORE_QUIET:
             logger.info("Battery read failed: %s", message)
 
-        GLib.timeout_add_seconds(config.QUICK_RETRY_SECONDS, self.poll_now)
         return False
