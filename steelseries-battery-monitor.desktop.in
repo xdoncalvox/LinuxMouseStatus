@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SteelSeries Battery Monitor
+Comment=Shows the battery level of a SteelSeries Rival 650 Wireless mouse
+Exec=__EXEC__
+Icon=__ICON__
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
