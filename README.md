@@ -1,10 +1,13 @@
 # Linux Wireless Manager
 
-A small Ubuntu tray app that shows the battery of your wireless mice and
-keyboards, and lets you change their settings. A mouse icon in the tray
-shows the mouse's battery level, a keyboard icon appears while a wireless
-keyboard is connected, and a window lists every detected device with
-Status, Settings and Alerts tabs.
+A small Linux app that shows the battery of your wireless mice and
+keyboards, warns you before they run out, and lets you change some of their
+settings (DPI, polling rate, sleep timer, button mapping). A mouse icon in
+the tray shows the mouse's battery level, a keyboard icon appears while a
+wireless keyboard is connected, and double-clicking either opens a window
+listing every detected device with Status, Settings and Alerts tabs.
+
+This app satisfies the need of an application for Linux systems since some of the official companion applications (like SteelSeries GG) are not yet compatible/supported. This was done completely vibe coding, and serves a super simple purpouse.  
 
 It doesn't implement device protocols itself:
 
@@ -82,6 +85,7 @@ log what's happening to the terminal:
 
 ## How it works
 
+**Detection and battery**
 - Every 10 seconds the app checks which devices are connected. This only
   lists USB devices and asks UPower; it never talks to a device, so it
   doesn't wake anything up.
@@ -90,17 +94,41 @@ log what's happening to the terminal:
   benefit. If a read fails (mouse asleep, out of range, momentarily busy),
   it retries after 10 seconds. UPower devices are checked every 30 seconds,
   which costs nothing since UPower already has the value.
+
+**Tray icons and the window**
 - The tray's mouse icon shows the lowest battery among your wireless mice.
   The keyboard icon only appears while a battery-powered keyboard is
-  connected. Their menus list each device's level, and have "Show Details",
-  "Refresh Now" and "Quit".
+  connected. Double-click either to open the window; their menus also have
+  "Show Details", "Refresh Now" and "Quit".
 - The window lists every detected device, including wired mice with no
-  battery, and remembers which one you last selected.
+  battery, and remembers which one you last selected. Each device has
+  three tabs: **Status** (current level, connection, last update time),
+  **Settings**, and **Alerts**.
+
+**Alerts**
 - You get a desktop notification when a battery first drops past 20% and
   again past 10%, and when a charging device reaches full. A warning only
   repeats after the device charges or climbs back above the level, so a
   battery hovering around 20% won't nag you. Each device's levels can be
   changed, or notifications turned off, in the window's Alerts tab.
+  Clicking "Show Details" on a notification opens the window on that
+  device.
+
+**Settings**
+- SteelSeries mice: DPI presets (or, on models with a multi-step DPI list,
+  an editable add/remove list of them), polling rate, sleep timer, and
+  button remapping - each button gets a dropdown of the mouse's other
+  buttons, media keys, and keyboard keys. Since the mouse can't report
+  these back, the tab shows either the values this app last saved to it,
+  or the model's defaults if nothing has been saved yet, and says which.
+- Logitech mice and keyboards (through [Solaar](https://pwr-solaar.github.io/Solaar/),
+  see Requirements below): DPI, pointer speed, and report rate, read live
+  from the device rather than remembered.
+- Changes only take effect when you click **Apply**; a mouse's primary
+  click button can't be remapped away to something else, so you can't
+  accidentally lock yourself out of clicking. **Reset to Defaults** is
+  available for SteelSeries mice (Logitech settings, through Solaar, have
+  no such command).
 
 ## Troubleshooting
 
@@ -129,6 +157,24 @@ venv/bin/rivalcfg --list-devices
 upower --dump
 ```
 
+**The Settings tab says "This device has no configurable settings"**
+For a SteelSeries mouse, that model has no writable settings in `rivalcfg`
+(rare - most wireless models have at least DPI and polling rate). For a
+Logitech device, either [Solaar](https://pwr-solaar.github.io/Solaar/)
+isn't installed, the device isn't paired in Solaar yet, or it's a
+Bluetooth device Solaar doesn't manage (its battery still works either
+way). Check with:
+
+```bash
+solaar show
+```
+
+**Applying a setting fails with a Solaar error**
+Make sure the device shows up in `solaar show` and is online (not asleep
+or out of range), and that Solaar's own app isn't mid-way through changing
+the same device. `solaar config <device>` prints the raw values this app
+reads.
+
 **No tray icon shows up at all (stock GNOME)**
 GNOME Shell doesn't show tray icons without an extension. Install
 ["AppIndicator and KStatusNotifierItem
@@ -154,14 +200,16 @@ linux-wireless-manager.desktop.in    template for the app-menu/autostart entry
 linux_wireless_manager/
     main.py          CLI entry point
     app.py           wires the monitor, tray icons and window together
-    monitor.py       background polling of every detected device
+    monitor.py       background polling and settings reads/writes for every detected device
     devices/
-        base.py          the Device interface and the snapshots sent to the UI
-        steelseries.py   SteelSeries mice through rivalcfg
-        upower.py        mice and keyboards reported by UPower
+        __init__.py      combines every backend's discover()
+        base.py          the Device interface, battery snapshots and the settings schema
+        steelseries.py   SteelSeries mice through rivalcfg (battery and settings)
+        upower.py        mice and keyboards reported by UPower (battery; Logitech settings via solaar.py)
+        solaar.py        Logitech mouse/keyboard settings through the Solaar CLI
     tray.py          the mouse and keyboard tray icons
     icons.py         generates the tray/window icons
-    window.py        the main window
+    window.py        the main window (Status / Settings / Alerts tabs)
     alerts.py        low-battery and fully-charged notifications
     preferences.py   app preferences (~/.config/linux-wireless-manager/)
     config.py        app ID, name, detection interval
