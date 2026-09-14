@@ -1,0 +1,23 @@
+Package: linux-wireless-manager
+Version: __VERSION__
+Section: utils
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.9), python3-venv, python3-pip, python3-setuptools, python3-wheel, python3-gi, gir1.2-gtk-3.0, upower, build-essential, libusb-1.0-0-dev, libudev-dev, libhidapi-hidraw0, gir1.2-ayatanaappindicator3-0.1 | gir1.2-appindicator3-0.1
+Recommends: gir1.2-notify-0.7, solaar
+Maintainer: Bryan Calvo <bryan@city.works>
+Homepage: https://github.com/xdoncalvox/LinuxMouseStatus
+Description: Battery monitor and settings manager for wireless mice/keyboards
+ Linux Wireless Manager shows the battery of wireless mice and keyboards
+ in the system tray, warns you with a desktop notification before they
+ run out, and lets you change device settings: DPI, polling rate, sleep
+ timer and button mapping.
+ .
+ SteelSeries mice are supported through rivalcfg. Other wireless mice and
+ keyboards - Logitech receivers, Bluetooth - are read through UPower, with
+ Logitech settings available through Solaar when it's installed.
+ .
+ This package installs a private Python virtualenv under
+ /usr/lib/linux-wireless-manager/venv at configure time (network access is
+ required then, to fetch rivalcfg from PyPI) rather than depending on
+ packaged Python libraries, since rivalcfg isn't packaged for Debian/Ubuntu.

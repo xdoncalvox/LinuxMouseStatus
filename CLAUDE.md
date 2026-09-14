@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Linux Wireless Manager is a GTK3 + AppIndicator tray app for Ubuntu that shows the battery of wireless mice and keyboards, and lets you change SteelSeries and Logitech mouse settings (DPI, polling rate, sleep timer, button mapping). It was called "SteelSeries Battery Monitor" (package `steelseries_battery_monitor`) before 2.0.0. There are two device-*discovery* backends:
+Linux Wireless Manager is a GTK3 + AppIndicator tray app for Ubuntu that shows the battery of wireless mice and keyboards, and lets you change SteelSeries and Logitech mouse settings (DPI, polling rate, sleep timer, button mapping). It was called "SteelSeries Battery Monitor" (package `steelseries_battery_monitor`) before being renamed. `__version__` (`linux_wireless_manager/__init__.py`) is `0.3.0` - staying under 1.0 is deliberate: large parts of the app (see ROADMAP.md) are still only checked against simulated hardware, not real devices. There are two device-*discovery* backends:
 
 - SteelSeries mice, through [`rivalcfg`](https://github.com/flozz/rivalcfg) - battery and settings both
 - anything UPower reports as a battery-powered mouse or keyboard (Logitech receivers, Bluetooth) - battery only; Logitech settings are layered on separately, through [Solaar](https://pwr-solaar.github.io/Solaar/)'s CLI (`devices/solaar.py`), matched to a UPower device by serial number
@@ -23,6 +23,7 @@ upower --dump                         # what the UPower backend will see
 RIVALCFG_DRY=1 RIVALCFG_PROFILE=1038:1838 ./run.sh --show-window   # pretend an Aerox 3 Wireless is plugged in (its reads fail)
 solaar show                           # is a Logitech device paired and does UPower's Serial match Solaar's?
 solaar config <serial>                # raw settings listing devices/solaar.py parses - useful when it disagrees with the app
+./build-deb.sh                        # builds dist/linux-wireless-manager_<version>-1_all.deb - see "Packaging" below
 ```
 
 There is no test suite, linter config, or build step. To verify a change, run the app against real hardware - and see "Never write to hardware by accident" below before writing any script that might touch a device. To exercise `DeviceMonitor` without hardware:
@@ -43,6 +44,17 @@ A one-off test script that calls `rivalcfg.mouse.get_mouse()` (or anything that 
 - Notifications use libnotify (`gir1.2-notify-0.7`). If the bindings are missing the app still runs; it just doesn't notify, and the Alerts tab says so.
 - `tray.py` tries `AyatanaAppIndicator3` first and falls back to legacy `AppIndicator3`. `main.py` imports GTK, then `devices` (rivalcfg/hidapi), then `app` lazily inside `main()`, so a missing dependency produces a specific install hint instead of a traceback. Keep new GI imports behind that same boundary.
 - `main.py` calls `GLib.set_prgname(config.APP_ID)` / `set_application_name(config.APP_NAME)` right after importing GTK, before any window exists. Running as `python3 -m linux_wireless_manager` otherwise leaves the window's WM_CLASS as `__main__.py` (GLib/GTK default it from `argv[0]`'s basename), which is what a taskbar or dock shows on hover instead of the app's name. The `.desktop` file's `StartupWMClass` matches the same app ID.
+
+## Packaging (.deb)
+
+`pyproject.toml` is the actual Python package definition (setuptools backend, `dynamic` version read from `linux_wireless_manager.__version__`, `[project.scripts]` gives a `linux-wireless-manager` console entry point calling `main.main()`). `requirements.txt` still exists separately for `install.sh`'s plain-venv approach; the two dependency lists (just `rivalcfg`, currently) have to be kept in sync by hand since nothing generates one from the other.
+
+`build-deb.sh` builds `dist/linux-wireless-manager_<version>-1_all.deb` **without installing it anywhere** - never run it with sudo, and never `dpkg -i`/`apt install` the result yourself; that's the user's call, per this session's safety rules (modifying system state needs their hand on it). It's a hand-rolled `dpkg-deb --build` on a manually assembled tree, deliberately *not* `dpkg-buildpackage`/debhelper, since debhelper isn't installed here and doesn't need to be - the package has no compiled code to build.
+
+- **Why `Architecture: all` despite depending on a package (`rivalcfg`) that isn't in Debian/Ubuntu's repos:** the package ships this app's source plus `debian/postinst`, which creates a venv at `/usr/lib/linux-wireless-manager/venv` and `pip install`s the shipped source (`/usr/lib/linux-wireless-manager/src`, with its `pyproject.toml`) into it at *configure* time on the machine installing the package - the same thing `install.sh` already does, just as maintainer scripts instead of an interactive shell script. This needs network access during install, which `debian/postinst` says explicitly and fails loudly (with a manual-retry command) if it can't reach PyPI, rather than leaving a broken half-installed app.
+- **This was verified**, not just written and assumed: `./build-deb.sh` was run, `dpkg-deb --contents`/`--info` checked, `lintian` run (only cosmetic warnings - initial-upload-closes-no-bugs, no-manual-page, wrong-name-for-changelog-of-native-package - none of them affect installability), and the exact `pip install --no-build-isolation <src>` line `debian/postinst` runs was tried for real in a scratch venv (`--system-site-packages`, matching what the real postinst gets), producing a working `linux-wireless-manager` entry point. What's *not* verified: an actual `dpkg -i`/`apt install ./*.deb` on a real machine, since that's the system-modifying step this session won't do itself.
+- `.github/workflows/release.yml` builds and attaches the `.deb` to a GitHub Release whenever a tag matching `v*.*.*` is pushed, after checking the tag's version against `__version__` (refuses to release a mismatch). To cut a release: bump `__version__`, commit, `git tag v<version>`, `git push origin v<version>`.
+- `debian/copyright` and `LICENSE` both carry the WTFPL text directly (it isn't one of the licenses under `/usr/share/common-licenses/`).
 
 ## Architecture
 

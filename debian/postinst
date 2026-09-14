@@ -1,0 +1,52 @@
+#!/bin/sh
+# Sets up the private Python virtualenv this package's Depends can't cover,
+# since rivalcfg isn't packaged for Debian/Ubuntu (see debian/control).
+set -e
+
+APP_DIR=/usr/lib/linux-wireless-manager
+SRC_DIR="$APP_DIR/src"
+VENV_DIR="$APP_DIR/venv"
+
+if [ "$1" = "configure" ]; then
+    if [ ! -x "$VENV_DIR/bin/python3" ]; then
+        echo "linux-wireless-manager: creating virtualenv at $VENV_DIR ..."
+        python3 -m venv --system-site-packages "$VENV_DIR"
+    fi
+
+    "$VENV_DIR/bin/pip" install --upgrade pip --quiet
+
+    echo "linux-wireless-manager: installing Python dependencies (needs network access) ..."
+    # --no-build-isolation: python3-setuptools/python3-wheel are already on
+    # the system (this package Depends on them), visible to this venv via
+    # --system-site-packages, so there's no need to fetch them again from
+    # PyPI just to build this package itself. rivalcfg, the one dependency
+    # that does need fetching, still gets installed normally.
+    if ! "$VENV_DIR/bin/pip" install --quiet --no-build-isolation "$SRC_DIR"; then
+        echo "linux-wireless-manager: failed to install into $VENV_DIR." >&2
+        echo "  Check your network connection, then retry with:" >&2
+        echo "    sudo $VENV_DIR/bin/pip install $SRC_DIR" >&2
+        exit 1
+    fi
+
+    # udev rule so SteelSeries mice can be read without root. Best-effort:
+    # a failure here shouldn't block the rest of the package configuring.
+    if [ -x "$VENV_DIR/bin/rivalcfg" ]; then
+        "$VENV_DIR/bin/rivalcfg" --update-udev || true
+    fi
+
+    cat <<MSG
+
+Linux Wireless Manager installed. Run it with:
+    linux-wireless-manager
+or find it in your application menu.
+
+If a SteelSeries mouse's USB receiver was already plugged in, unplug and
+replug it once so the new udev permission rule takes effect.
+
+This package doesn't start the app automatically on login - copy
+/usr/share/applications/linux-wireless-manager.desktop to
+~/.config/autostart/ yourself if you want that.
+MSG
+fi
+
+exit 0

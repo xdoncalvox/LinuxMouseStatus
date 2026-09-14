@@ -1,0 +1,6 @@
+linux-wireless-manager (__VERSION__-1) unstable; urgency=medium
+
+  * See https://github.com/xdoncalvox/LinuxMouseStatus/blob/main/ROADMAP.md
+    for what changed.
+
+ -- Bryan Calvo <bryan@city.works>  __DATE__

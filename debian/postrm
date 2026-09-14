@@ -1,0 +1,10 @@
+#!/bin/sh
+# Removes the virtualenv postinst created, since dpkg doesn't track it
+# (it's built from a live PyPI fetch, not shipped in the package).
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -rf /usr/lib/linux-wireless-manager/venv
+fi
+
+exit 0

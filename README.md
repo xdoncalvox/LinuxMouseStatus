@@ -55,26 +55,55 @@ simulated hardware, not the real thing.
 
 ## Install
 
+**Option 1: `.deb` package.** Download the latest one from
+[Releases](https://github.com/xdoncalvox/LinuxMouseStatus/releases), then:
+
+```bash
+sudo apt install ./linux-wireless-manager_*_all.deb
+```
+
+(`apt install ./<file>` rather than `dpkg -i` so apt pulls in the system
+packages it Depends on automatically; `sudo dpkg -i ./<file>.deb && sudo apt
+install -f` works too.) It installs to `/usr`, adds an application menu
+entry, and sets up a private Python virtualenv the first time it configures
+(needs network access then, since `rivalcfg` isn't packaged for Debian or
+Ubuntu - see `debian/control`). It does **not** enable autostart on login;
+copy `/usr/share/applications/linux-wireless-manager.desktop` to
+`~/.config/autostart/` yourself if you want that.
+
+**Option 2: from this repo**, if you'd rather not install anything
+system-wide:
+
 ```bash
 ./install.sh
 ```
 
-This installs the required apt packages, sets up a Python virtualenv,
-installs a udev rule so the app can read SteelSeries mice without root, and
-adds an application menu entry (with an option to start on login). If you
-had the app installed under its old name, "SteelSeries Battery Monitor",
-its menu and autostart entries are replaced.
+This installs the required apt packages, sets up a Python virtualenv
+*inside this repo's own `venv/` folder*, installs a udev rule so the app can
+read SteelSeries mice without root, and adds an application menu entry
+(with an option to start on login). If you had the app installed under its
+old name, "SteelSeries Battery Monitor", its menu and autostart entries are
+replaced.
 
-**After installing, unplug and replug the USB receiver once** (or reboot) so
-the new udev permission rule takes effect.
+Either way, **after installing, unplug and replug the USB receiver once**
+(or reboot) so the new udev permission rule takes effect.
 
 ## Run
+
+From the `.deb`:
+
+```bash
+linux-wireless-manager
+```
+
+From this repo (`./install.sh`):
 
 ```bash
 ./run.sh
 ```
 
-or launch "Linux Wireless Manager" from your application menu.
+Either way, you can also launch "Linux Wireless Manager" from your
+application menu.
 
 Pass `--show-window` to also open the window on startup, or `--verbose` to
 log what's happening to the terminal:
@@ -175,6 +204,18 @@ or out of range), and that Solaar's own app isn't mid-way through changing
 the same device. `solaar config <device>` prints the raw values this app
 reads.
 
+**Installing the `.deb` fails, or `linux-wireless-manager` isn't found afterward**
+The package's `postinst` step needs network access to fetch `rivalcfg` from
+PyPI into a private virtualenv (`/usr/lib/linux-wireless-manager/venv`) -
+there's no Debian/Ubuntu package for it, so this can't be a plain `Depends`.
+If that step failed (check `sudo apt install -f` or `sudo dpkg --configure
+-a`'s output), fix your network connection and retry it directly:
+
+```bash
+sudo /usr/lib/linux-wireless-manager/venv/bin/pip install \
+    --no-build-isolation /usr/lib/linux-wireless-manager/src
+```
+
 **No tray icon shows up at all (stock GNOME)**
 GNOME Shell doesn't show tray icons without an extension. Install
 ["AppIndicator and KStatusNotifierItem
@@ -195,8 +236,12 @@ system and install it manually, then re-run `./install.sh`.
 ```
 install.sh                           setup script (apt deps, venv, udev, menu entry)
 run.sh                               launcher
-requirements.txt                     Python deps (rivalcfg)
+build-deb.sh                         builds the .deb in dist/ (see debian/) - doesn't install it
+debian/                              .deb packaging metadata (control, postinst, postrm, copyright, changelog)
+pyproject.toml                       Python package metadata; what build-deb.sh/pip install actually installs
+requirements.txt                     Python deps (rivalcfg) - what install.sh's venv uses directly
 linux-wireless-manager.desktop.in    template for the app-menu/autostart entry
+.github/workflows/release.yml        builds and publishes the .deb to GitHub Releases on a version tag push
 linux_wireless_manager/
     main.py          CLI entry point
     app.py           wires the monitor, tray icons and window together
@@ -217,5 +262,5 @@ linux_wireless_manager/
 
 ## License
 
-This project: WTFPL (same as `rivalcfg`, which it depends on and takes
-protocol details from).
+[WTFPL](LICENSE) (same as `rivalcfg`, which it depends on and takes protocol
+details from).

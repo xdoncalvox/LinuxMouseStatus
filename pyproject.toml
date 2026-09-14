@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linux-wireless-manager"
+dynamic = ["version"]
+description = "Battery monitor and settings manager for wireless mice and keyboards"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "WTFPL" }
+authors = [{ name = "Bryan Calvo" }]
+urls = { Homepage = "https://github.com/xdoncalvox/LinuxMouseStatus" }
+# GTK / PyGObject / AppIndicator come from apt, not pip - see CLAUDE.md.
+# rivalcfg pulls in hidapi (imported as `hid`), which needs a matching
+# native hidapi library on the system (see debian/control's Depends).
+dependencies = ["rivalcfg"]
+
+[project.scripts]
+linux-wireless-manager = "linux_wireless_manager.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "linux_wireless_manager.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["linux_wireless_manager*"]

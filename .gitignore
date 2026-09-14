@@ -4,3 +4,8 @@ venv/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# .deb build output (build-deb.sh) - published as GitHub Release assets,
+# not committed
+dist/
+*.egg-info/

@@ -1,0 +1,52 @@
+name: Release .deb
+
+# Builds the .deb (see build-deb.sh) and attaches it to a GitHub Release
+# whenever a version tag is pushed. The tag's version (after the "v") must
+# match linux_wireless_manager/__init__.py's __version__, so a release
+# can't accidentally ship the wrong build.
+#
+# To cut a release:
+#   1. Bump __version__ in linux_wireless_manager/__init__.py, commit it.
+#   2. git tag v<version> && git push origin v<version>
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches __version__
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(python3 -c 'import re; print(re.search(r"__version__ = \"([^\"]+)\"", open("linux_wireless_manager/__init__.py").read())[1])')"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME (version $tag_version) doesn't match linux_wireless_manager/__init__.py's __version__ ($pkg_version)."
+            exit 1
+          fi
+
+      - name: Build .deb
+        run: ./build-deb.sh
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          generate_release_notes: true
+          body: |
+            Install with:
+            ```
+            sudo apt install ./linux-wireless-manager_*_all.deb
+            ```
+            (or `sudo dpkg -i` followed by `sudo apt install -f` to pull in dependencies).
+
+            See [ROADMAP.md](https://github.com/${{ github.repository }}/blob/main/ROADMAP.md)
+            for what's changed and what's still only been checked against
+            simulated hardware.
