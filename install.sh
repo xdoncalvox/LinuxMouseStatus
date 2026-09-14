@@ -58,6 +58,24 @@ sudo "$VENV_DIR/bin/rivalcfg" --update-udev
 
 chmod +x "$SCRIPT_DIR/run.sh"
 
+# Solaar (https://pwr-solaar.github.io/Solaar/) is what Logitech mouse and
+# keyboard settings go through (see devices/solaar.py) - optional, since
+# battery reporting for those devices works without it (through UPower).
+if command -v solaar >/dev/null 2>&1; then
+    echo "==> Solaar is already installed; Logitech device settings will use it."
+elif apt-cache show solaar >/dev/null 2>&1; then
+    read -r -p "Install Solaar, for Logitech mouse/keyboard settings? [Y/n] " SOLAAR_ANSWER
+    SOLAAR_ANSWER="${SOLAAR_ANSWER:-Y}"
+    if [[ "$SOLAAR_ANSWER" =~ ^[Yy] ]]; then
+        sudo apt install -y solaar
+    else
+        echo "    Skipped. Battery reporting for Logitech devices still works without it."
+    fi
+else
+    echo "WARNING: 'solaar' isn't in your apt repos; Logitech device settings won't be available." >&2
+    echo "         Battery reporting for those devices still works without it." >&2
+fi
+
 echo "==> Registering application menu entry..."
 APPS_DIR="$HOME/.local/share/applications"
 AUTOSTART_DIR="$HOME/.config/autostart"

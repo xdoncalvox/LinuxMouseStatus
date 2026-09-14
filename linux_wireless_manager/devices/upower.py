@@ -7,6 +7,12 @@ its cached values over D-Bus, so this never wakes a device up.
 
 The numeric codes below are UPower's UpDeviceKind, UpDeviceState and
 UpDeviceLevel enums.
+
+Settings (Step 3b) go through the Solaar CLI (see solaar.py), matched to
+this device by the serial number UPower also reports. Only Logitech
+receiver devices Solaar manages will ever have any; Bluetooth devices and
+anything Solaar doesn't recognise just get an empty settings_schema(), the
+same as before Step 3b existed.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ import time
 
 from gi.repository import Gio, GLib
 
+from . import solaar
 from .base import (
     BatteryReadError,
     BatteryStatus,
@@ -23,6 +30,9 @@ from .base import (
     Connection,
     Device,
     DeviceKind,
+    SettingField,
+    SettingsValues,
+    SettingsWriteError,
 )
 
 _BUS_NAME = "org.freedesktop.UPower"
@@ -122,6 +132,9 @@ class UPowerDevice(Device):
         )
         self._bus = bus
         self._path = path
+        # Used to find this device again through the Solaar CLI (see
+        # solaar.py). None for devices UPower doesn't report a serial for.
+        self._serial = (props.get("Serial") or "").strip() or None
 
     @property
     def hardware_key(self) -> object:
@@ -149,4 +162,23 @@ class UPowerDevice(Device):
             coarse_level=coarse_level,
             is_charging=state == _STATE_CHARGING,
             read_at=time.time(),
+        )
+
+    # -- Settings (Step 3b, Logitech only, through Solaar) ----------------
+
+    def settings_schema(self) -> list[SettingField]:
+        return solaar.settings_schema(self._serial)
+
+    def get_settings(self) -> SettingsValues:
+        return solaar.get_settings(self._serial)
+
+    def apply_settings(self, values: dict) -> SettingsValues:
+        return solaar.apply_settings(self._serial, values)
+
+    def reset_settings(self) -> SettingsValues:
+        # Solaar's CLI has no reset-to-factory-defaults action (only
+        # show/config/pair/unpair/profiles) - see solaar.py.
+        raise SettingsWriteError(
+            "solaar has no reset-to-defaults command",
+            "Solaar doesn't support resetting a device to its factory defaults.",
         )

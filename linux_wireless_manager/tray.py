@@ -70,16 +70,23 @@ class KindIndicator:
         self._menu = Gtk.Menu()
         self._device_items: list[Gtk.MenuItem] = []
         self._menu.append(Gtk.SeparatorMenuItem())
+        show_details_item = None
         for label, callback in (("Show Details", on_show_details), ("Refresh Now", on_refresh)):
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda _item, cb=callback: cb())
             self._menu.append(item)
+            if label == "Show Details":
+                show_details_item = item
         self._menu.append(Gtk.SeparatorMenuItem())
         quit_item = Gtk.MenuItem(label="Quit")
         quit_item.connect("activate", lambda _item: on_quit())
         self._menu.append(quit_item)
         self._menu.show_all()
         self._indicator.set_menu(self._menu)
+        # AppIndicator has no plain "activate"/double-click signal - every
+        # click opens the menu. The "secondary activate" target is the
+        # closest thing: Ubuntu's top bar triggers it on a double-click.
+        self._indicator.set_secondary_activate_target(show_details_item)
 
         self.update([])
 

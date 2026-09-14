@@ -3,7 +3,10 @@ travel from the polling thread to the UI.
 
 Device objects live only in the polling thread (see monitor.py). The UI only
 ever sees DeviceState, an immutable snapshot, so no GTK code touches a device
-and no device code touches GTK.
+and no device code touches GTK. Settings work the same way: the UI only ever
+sees SettingField/SettingsValues, and reads or writes them through
+DeviceMonitor.run_device_task() (see monitor.py), never by touching a Device
+directly.
 """
 
 from __future__ import annotations
@@ -87,6 +90,110 @@ class BatteryReadError(Exception):
         self.user_message = user_message
 
 
+class SettingsWriteError(Exception):
+    """A settings read or write failed in an expected way (device off,
+    asleep, unplugged, or a bad value). Same detail/user_message split as
+    BatteryReadError."""
+
+    def __init__(
+        self,
+        detail: str,
+        user_message: str = "Couldn't save the setting. The device may be turned off or asleep.",
+    ):
+        super().__init__(detail)
+        self.user_message = user_message
+
+
+# -- Settings schema ------------------------------------------------------
+#
+# A device describes its Settings tab as a list of these fields. Each field
+# type carries everything the window needs to build one widget and to
+# validate/pass a value back, without the window knowing anything about
+# rivalcfg or any other backend's internals.
+
+
+@dataclasses.dataclass(frozen=True)
+class RangeSetting:
+    """A single integer between minimum and maximum (sleep timer, or a DPI
+    preset on models with a fixed number of presets)."""
+
+    name: str
+    label: str
+    minimum: int
+    maximum: int
+    step: int
+    default: int
+
+
+@dataclasses.dataclass(frozen=True)
+class ChoiceSetting:
+    """One value picked from a fixed list (polling rate)."""
+
+    name: str
+    label: str
+    options: list[tuple[str, object]]  # (display text, value), in display order
+    default: object
+
+
+@dataclasses.dataclass(frozen=True)
+class DpiPresetsSetting:
+    """A editable list of 1-max_presets DPI values, used by the models that
+    let several DPI steps be cycled with a button. axes_linked is False only
+    for the handful of models (e.g. Rival 3 Gen 2) that can set X and Y DPI
+    separately; those get an X/Y pair per preset instead of one value."""
+
+    name: str
+    label: str
+    minimum: int
+    maximum: int
+    step: int
+    max_presets: int
+    axes_linked: bool
+    default: list[int] | list[tuple[int, int]]
+
+
+@dataclasses.dataclass(frozen=True)
+class ButtonAction:
+    """One choice offered in a button's dropdown."""
+
+    label: str
+    value: str
+    group: str  # "Action", "Mouse button", "Media key" or "Keyboard key"
+
+
+@dataclasses.dataclass(frozen=True)
+class ButtonsSetting:
+    """Per-button remapping. `buttons` lists the physical button names in
+    profile order; `actions` are the choices offered for all of them.
+    `primary_button`, when set, must never be left mapped to "disabled" -
+    that would leave the mouse unclickable."""
+
+    name: str
+    label: str
+    buttons: list[str]
+    actions: list[ButtonAction]
+    primary_button: str | None
+    default: dict[str, str]
+
+
+SettingField = RangeSetting | ChoiceSetting | DpiPresetsSetting | ButtonsSetting
+
+
+@dataclasses.dataclass(frozen=True)
+class SettingsValues:
+    """What get_settings()/apply_settings()/reset_settings() hand back: the
+    current value for each of settings_schema()'s fields, keyed by name.
+
+    from_cache is True when these reflect a previous write from this app
+    (SteelSeries settings can't be read back from the mouse itself, so
+    that's the only record); False means they're just the model's defaults
+    because nothing has been saved yet.
+    """
+
+    values: dict[str, object]
+    from_cache: bool
+
+
 class Device(abc.ABC):
     """One physical device, created by a backend's discover()."""
 
@@ -123,15 +230,32 @@ class Device(abc.ABC):
         """Blocking read, called from the polling thread and only when
         has_battery is True. Raises BatteryReadError for expected failures."""
 
-    # -- Settings: no backend implements these yet (see ROADMAP.md) ------
+    # -- Settings ---------------------------------------------------------
+    #
+    # Only settings_schema() is safe to call cheaply and often: it must never
+    # talk to the device, only describe the model. get_settings(),
+    # apply_settings() and reset_settings() run in the polling thread, behind
+    # DeviceMonitor.run_device_task(), and may block on hardware I/O.
 
-    def settings_schema(self) -> list:
+    def settings_schema(self) -> list[SettingField]:
+        """Fields for the Settings tab, or [] when this device has none."""
         return []
 
-    def get_settings(self) -> dict:
+    def get_settings(self) -> SettingsValues:
+        """The values to show for settings_schema()'s fields. Only called
+        when settings_schema() is non-empty. Raises SettingsWriteError for
+        expected failures."""
         raise NotImplementedError(f"{self.name} has no configurable settings")
 
-    def apply_settings(self, values: dict) -> None:
+    def apply_settings(self, values: dict) -> SettingsValues:
+        """Write `values` (one entry per settings_schema() field name) to the
+        device and return the values now in effect. Raises SettingsWriteError
+        for expected failures, including a rejected value."""
+        raise NotImplementedError(f"{self.name} has no configurable settings")
+
+    def reset_settings(self) -> SettingsValues:
+        """Restore the model's factory defaults and return the values now in
+        effect. Raises SettingsWriteError for expected failures."""
         raise NotImplementedError(f"{self.name} has no configurable settings")
 
     def __repr__(self) -> str:

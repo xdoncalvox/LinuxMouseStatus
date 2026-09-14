@@ -11,21 +11,37 @@ from . import steelseries, upower
 from .base import (
     BatteryReadError,
     BatteryStatus,
+    ButtonAction,
+    ButtonsSetting,
+    ChoiceSetting,
     CoarseLevel,
     Connection,
     Device,
     DeviceKind,
     DeviceState,
+    DpiPresetsSetting,
+    RangeSetting,
+    SettingField,
+    SettingsValues,
+    SettingsWriteError,
 )
 
 __all__ = [
     "BatteryReadError",
     "BatteryStatus",
+    "ButtonAction",
+    "ButtonsSetting",
+    "ChoiceSetting",
     "CoarseLevel",
     "Connection",
     "Device",
     "DeviceKind",
     "DeviceState",
+    "DpiPresetsSetting",
+    "RangeSetting",
+    "SettingField",
+    "SettingsValues",
+    "SettingsWriteError",
     "discover_devices",
 ]
 

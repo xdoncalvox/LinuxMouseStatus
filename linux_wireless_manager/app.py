@@ -36,6 +36,9 @@ class WirelessManagerApp:
             preferences=preferences,
             custom_icons=icon_dir is not None,
             alert_manager=self.alerts,
+            on_load_settings=self._load_settings,
+            on_apply_settings=self._apply_settings,
+            on_reset_settings=self._reset_settings,
         )
         # The mouse icon is always shown so the app stays reachable; the
         # keyboard icon only while a battery-powered keyboard is connected.
@@ -69,3 +72,27 @@ class WirelessManagerApp:
             indicator.update([s for s in states if s.kind is kind and s.has_battery])
         self.window.update_devices(states)
         self.alerts.update(states)
+
+    # -- Settings tab plumbing -------------------------------------------
+    #
+    # window.py only ever sees device_id strings and these callbacks; the
+    # Device objects (and settings I/O) stay in the monitor's worker thread.
+
+    def _load_settings(self, device_id: str, callback) -> None:
+        def task(device):
+            schema = device.settings_schema()
+            # get_settings() is only implemented (and only safe to call) when
+            # a backend actually declared fields; most devices have none.
+            return schema, (device.get_settings() if schema else None)
+
+        self.monitor.run_device_task(device_id, task, callback)
+
+    def _apply_settings(self, device_id: str, values: dict, callback) -> None:
+        self.monitor.run_device_task(
+            device_id, lambda device: device.apply_settings(values), callback, refresh_battery=True
+        )
+
+    def _reset_settings(self, device_id: str, callback) -> None:
+        self.monitor.run_device_task(
+            device_id, lambda device: device.reset_settings(), callback, refresh_battery=True
+        )

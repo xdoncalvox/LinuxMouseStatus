@@ -52,6 +52,15 @@ def main(argv=None) -> int:
         )
         return 1
 
+    # Run as `python3 -m linux_wireless_manager`, argv[0] is __main__.py's
+    # path, and GLib/GTK default the window's WM_CLASS (what a taskbar or
+    # dock shows on hover) to its basename. Set both explicitly, before any
+    # window exists, so it reads "Linux Wireless Manager" instead.
+    from . import config
+
+    GLib.set_prgname(config.APP_ID)
+    GLib.set_application_name(config.APP_NAME)
+
     try:
         from . import devices  # noqa: F401 - imports rivalcfg and hidapi
     except ImportError as exc:

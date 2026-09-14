@@ -19,6 +19,11 @@ Scheduling rules (keep them when changing this file):
 - Battery reads happen one at a time in the worker thread. _poll_lock is
   taken non-blocking, so a request that arrives while a cycle is running is
   dropped; that cycle will schedule the next tick anyway.
+- run_device_task() (settings reads/writes) takes _poll_lock *blocking*, so
+  it's never dropped - it just waits out a cycle already in progress instead
+  of overlapping it. While a task holds the lock, a tick's own non-blocking
+  acquire fails and that tick is skipped, same as when two cycles overlap;
+  the next tick tries again.
 """
 
 from __future__ import annotations
@@ -61,6 +66,34 @@ class DeviceMonitor:
     def refresh_now(self) -> None:
         """Re-detect devices and read every battery now. Main thread only."""
         self._start_cycle(True)
+
+    def run_device_task(
+        self,
+        device_id: str,
+        task: Callable[[Device], object],
+        on_done: Callable[[object, Exception | None], None],
+        *,
+        refresh_battery: bool = False,
+    ) -> None:
+        """Run task(device) in the worker thread for the given device,
+        holding _poll_lock so it can't overlap a battery read, then hand the
+        result to on_done(result, error) on the main thread. error is None on
+        success; result is None on failure. This is how settings reads and
+        writes reach a Device without window.py ever touching one directly.
+
+        Pass refresh_battery=True when the task itself opened the device (a
+        settings write), so the newly-current battery reading is picked up
+        too; leave it False for a plain settings read, which only touches
+        rivalcfg's cache file and shouldn't wake the mouse's radio.
+
+        Main thread only. If the device has since disconnected, on_done gets
+        a LookupError instead of task running.
+        """
+        threading.Thread(
+            target=self._device_task_worker,
+            args=(device_id, task, on_done, refresh_battery),
+            daemon=True,
+        ).start()
 
     # -- Main thread ----------------------------------------------------
 
@@ -184,6 +217,42 @@ class DeviceMonitor:
                 last_attempt_at=now,
             )
             self._next_read_at[device.id] = now + device.poll_interval_seconds
+
+    def _device_task_worker(
+        self,
+        device_id: str,
+        task: Callable[[Device], object],
+        on_done: Callable[[object, Exception | None], None],
+        refresh_battery: bool,
+    ) -> None:
+        result: object = None
+        error: Exception | None = None
+        with self._poll_lock:
+            device = self._devices.get(device_id)
+            if device is None:
+                error = LookupError(f"{device_id} is no longer connected")
+            else:
+                try:
+                    result = task(device)
+                except Exception as exc:  # noqa: BLE001 - handed to on_done, not raised here
+                    logger.warning("Device task failed for %s: %s", device.name, exc)
+                    error = exc
+                else:
+                    if refresh_battery and device.has_battery:
+                        self._read(device)
+        states = self._snapshot()
+        GLib.idle_add(self._apply_task_result, states, result, error, on_done)
+
+    def _apply_task_result(
+        self,
+        states: list[DeviceState],
+        result: object,
+        error: Exception | None,
+        on_done: Callable[[object, Exception | None], None],
+    ) -> bool:
+        self._on_update(states)
+        on_done(result, error)
+        return False
 
     def _snapshot(self) -> list[DeviceState]:
         return sorted(

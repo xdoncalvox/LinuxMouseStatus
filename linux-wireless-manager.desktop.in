@@ -5,6 +5,7 @@ Comment=Battery status for wireless mice and keyboards
 Keywords=mouse;keyboard;battery;wireless;steelseries;logitech;
 Exec=__EXEC__
 Icon=__ICON__
+StartupWMClass=linux-wireless-manager
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true

@@ -1,9 +1,10 @@
 # Linux Wireless Manager
 
 A small Ubuntu tray app that shows the battery of your wireless mice and
-keyboards. A mouse icon in the tray shows the mouse's battery level, a
-keyboard icon appears while a wireless keyboard is connected, and a window
-lists every detected device.
+keyboards, and lets you change their settings. A mouse icon in the tray
+shows the mouse's battery level, a keyboard icon appears while a wireless
+keyboard is connected, and a window lists every detected device with
+Status, Settings and Alerts tabs.
 
 It doesn't implement device protocols itself:
 
@@ -13,20 +14,27 @@ It doesn't implement device protocols itself:
 - **Other wireless mice and keyboards** come from
   [UPower](https://upower.freedesktop.org/), which collects the batteries
   the Linux kernel reports: Logitech devices on a Unifying, Bolt or
-  Lightspeed receiver, and Bluetooth mice and keyboards.
+  Lightspeed receiver, and Bluetooth mice and keyboards. Their settings, on
+  Logitech devices, come from [Solaar](https://pwr-solaar.github.io/Solaar/)
+  (optionally installed by `install.sh`) - unlike SteelSeries, DPI and
+  report rate can be read back from the device, not just written.
 
 ## Supported devices
 
-| Devices | Battery | Tested on hardware |
-|---|---|---|
-| SteelSeries Rival 650 Wireless | Yes | Yes |
-| SteelSeries Rival 3 Wireless (and Gen 2), Aerox 3 / 5 / 9 Wireless, Prime Wireless, Prime Mini Wireless, including special editions | Yes | No |
-| Other SteelSeries mice `rivalcfg` supports | No battery; listed in the window only | No |
-| Logitech mice and keyboards on a receiver, and Bluetooth mice and keyboards (through UPower) | Yes | No |
+| Devices | Battery | Settings | Tested on hardware |
+|---|---|---|---|
+| SteelSeries Rival 650 Wireless | Yes | DPI presets, polling rate, sleep timer, button mapping | Yes |
+| SteelSeries Rival 3 Wireless (and Gen 2), Aerox 3 / 5 / 9 Wireless, Prime Wireless, Prime Mini Wireless, including special editions | Yes | Same, model-dependent (e.g. a DPI step list instead of two presets) | No |
+| Other SteelSeries mice `rivalcfg` supports | No battery; listed in the window only | Same as above, where the model has any | No |
+| Logitech mice and keyboards on a receiver, and Bluetooth mice and keyboards (through UPower) | Yes | Logitech only, through Solaar: DPI, pointer speed, report rate | No |
 
-See [ROADMAP.md](ROADMAP.md) for what's planned next: device settings (DPI,
-polling rate, sleep timer, button mapping) and Logitech settings through
-Solaar.
+SteelSeries settings can't be read back from the mouse - it's a write-only
+protocol - so the Settings tab shows either the values this app last saved,
+or the model's own defaults if nothing has been saved yet; it says which.
+Logitech settings, read live through Solaar, don't have that problem.
+
+See [ROADMAP.md](ROADMAP.md) for what's still only been checked against
+simulated hardware, not the real thing.
 
 ## Requirements
 
@@ -37,6 +45,10 @@ Solaar.
   ships it enabled).
 - For SteelSeries mice: the USB wireless receiver plugged in (or the mouse
   connected by cable).
+- For Logitech device *settings* specifically (battery works without it):
+  [Solaar](https://pwr-solaar.github.io/Solaar/), which `install.sh` offers
+  to install (`apt install solaar`) and which needs the device already
+  paired in Solaar itself.
 
 ## Install
 
