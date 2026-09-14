@@ -11,6 +11,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
 from . import icons  # noqa: E402
+from .alerts import AlertManager  # noqa: E402
 from .devices import DeviceKind, DeviceState  # noqa: E402
 from .monitor import DeviceMonitor  # noqa: E402
 from .preferences import Preferences  # noqa: E402
@@ -25,11 +26,16 @@ class WirelessManagerApp:
             # Lets the window use the same icons as the tray.
             Gtk.IconTheme.get_default().append_search_path(icon_dir)
 
+        preferences = Preferences()
         self.monitor = DeviceMonitor(on_update=self._on_devices_updated)
+        self.alerts = AlertManager(
+            preferences, icon_dir=icon_dir, on_show_device=self.show_device
+        )
         self.window = MainWindow(
             on_refresh_requested=self.monitor.refresh_now,
-            preferences=Preferences(),
+            preferences=preferences,
             custom_icons=icon_dir is not None,
+            alert_manager=self.alerts,
         )
         # The mouse icon is always shown so the app stays reachable; the
         # keyboard icon only while a battery-powered keyboard is connected.
@@ -53,7 +59,13 @@ class WirelessManagerApp:
     def show_window(self) -> None:
         self.window.present()
 
+    def show_device(self, device_id: str) -> None:
+        """Open the window on one device, e.g. from a notification."""
+        self.window.show_device(device_id)
+        self.show_window()
+
     def _on_devices_updated(self, states: list[DeviceState]) -> None:
         for kind, indicator in self.indicators.items():
             indicator.update([s for s in states if s.kind is kind and s.has_battery])
         self.window.update_devices(states)
+        self.alerts.update(states)

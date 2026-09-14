@@ -16,7 +16,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
-from . import config, icons  # noqa: E402
+from . import alerts, config, icons  # noqa: E402
 from .devices import DeviceState  # noqa: E402
 from .preferences import Preferences  # noqa: E402
 
@@ -109,11 +109,13 @@ class MainWindow(Gtk.Window):
         on_refresh_requested: Callable[[], None],
         preferences: Preferences,
         custom_icons: bool,
+        alert_manager: alerts.AlertManager,
     ):
         super().__init__(title=config.APP_NAME)
         self._on_refresh_requested = on_refresh_requested
         self._preferences = preferences
         self._custom_icons = custom_icons
+        self._alerts = alert_manager
         self._states: dict[str, DeviceState] = {}
         self._listed_states: list[DeviceState] | None = None
         # The device the user picked (remembered across restarts), and the one
@@ -122,6 +124,10 @@ class MainWindow(Gtk.Window):
         self._chosen_id: str | None = preferences.get(_SELECTED_DEVICE_KEY)
         self._shown_id: str | None = None
         self._rebuilding_list = False
+        # The device whose settings are in the Alerts tab, and a guard so
+        # filling that tab in doesn't count as the user editing it.
+        self._alerts_device_id: str | None = None
+        self._loading_alerts = False
 
         self.set_default_size(640, 360)
         # Hide instead of destroying on close, so the tray icons can reuse
@@ -172,9 +178,7 @@ class MainWindow(Gtk.Window):
         self._tabs.add_titled(
             _placeholder("Device settings aren't available yet."), "settings", "Settings"
         )
-        self._tabs.add_titled(
-            _placeholder("Low-battery alerts aren't available yet."), "alerts", "Alerts"
-        )
+        self._tabs.add_titled(self._build_alerts_tab(), "alerts", "Alerts")
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self._tabs)
         switcher.set_halign(Gtk.Align.CENTER)
@@ -201,6 +205,93 @@ class MainWindow(Gtk.Window):
         for label in (self._name_label, self._level_label, self._status_label, self._updated_label):
             box.pack_start(label, False, False, 0)
         return box
+
+    def _build_alerts_tab(self) -> Gtk.Widget:
+        self._alerts_enabled = Gtk.Switch(halign=Gtk.Align.START)
+        self._alerts_enabled.connect("notify::active", self._on_alert_changed)
+        self._alerts_charged = Gtk.Switch(halign=Gtk.Align.START)
+        self._alerts_charged.connect("notify::active", self._on_alert_changed)
+        self._alert_spins = []
+        for _ in range(2):
+            spin = Gtk.SpinButton.new_with_range(alerts.MIN_THRESHOLD, alerts.MAX_THRESHOLD, 5)
+            spin.set_numeric(True)
+            spin.connect("value-changed", self._on_alert_changed)
+            self._alert_spins.append(spin)
+
+        grid = Gtk.Grid(row_spacing=10, column_spacing=12)
+        fields = (
+            ("Warn me when the battery is low", self._alerts_enabled),
+            ("First warning at (%)", self._alert_spins[0]),
+            ("Second warning at (%)", self._alert_spins[1]),
+            ("Tell me when it's fully charged", self._alerts_charged),
+        )
+        for row, (text, widget) in enumerate(fields):
+            grid.attach(Gtk.Label(label=text, xalign=0), 0, row, 1, 1)
+            grid.attach(widget, 1, row, 1, 1)
+
+        self._alerts_note = _dim_label()
+        self._alerts_note.set_line_wrap(True)
+        self._alerts_note.set_max_width_chars(44)
+        self._alerts_note.set_xalign(0)
+
+        form = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        form.set_border_width(24)
+        form.set_valign(Gtk.Align.CENTER)
+        form.pack_start(grid, False, False, 0)
+        form.pack_start(self._alerts_note, False, False, 0)
+
+        self._alerts_message = _placeholder("")
+        self._alerts_page = Gtk.Stack()
+        self._alerts_page.add_named(form, "form")
+        self._alerts_page.add_named(self._alerts_message, "message")
+        return self._alerts_page
+
+    def _populate_alerts(self, state: DeviceState) -> None:
+        """Fill the Alerts tab, but only when the shown device changes, so a
+        poll can't overwrite what the user is editing."""
+        if state.id == self._alerts_device_id:
+            self._update_alerts_note(state)
+            return
+        self._alerts_device_id = state.id
+
+        if not state.has_battery:
+            self._alerts_message.set_text(
+                "This device has no battery, so there's nothing to alert on."
+            )
+            self._alerts_page.set_visible_child_name("message")
+            return
+        if not self._alerts.available:
+            self._alerts_message.set_text(
+                "Desktop notifications aren't available. Install gir1.2-notify-0.7 "
+                "and restart the app."
+            )
+            self._alerts_page.set_visible_child_name("message")
+            return
+
+        settings = self._alerts.settings_for(state.id)
+        values = list(settings.thresholds)[:2]
+        while len(values) < 2:
+            values.append(alerts.DEFAULT_THRESHOLDS[len(values)])
+        self._loading_alerts = True
+        try:
+            self._alerts_enabled.set_active(settings.enabled)
+            self._alerts_charged.set_active(settings.notify_charged)
+            for spin, value in zip(self._alert_spins, values):
+                spin.set_value(value)
+                spin.set_sensitive(settings.enabled)
+        finally:
+            self._loading_alerts = False
+        self._update_alerts_note(state)
+        self._alerts_page.set_visible_child_name("form")
+
+    def _update_alerts_note(self, state: DeviceState) -> None:
+        coarse = state.battery is not None and state.battery.percentage is None
+        self._alerts_note.set_text(
+            'This device reports a rough level instead of a percentage: '
+            '"Low" counts as 20% and "Critical" as 5%.'
+            if coarse
+            else ""
+        )
 
     def _build_empty_page(self) -> Gtk.Widget:
         title = Gtk.Label()
@@ -261,6 +352,16 @@ class MainWindow(Gtk.Window):
         self._level_label.set_markup(f"<span size='{size}'>{GLib.markup_escape_text(level)}</span>")
         self._status_label.set_text(status)
         self._updated_label.set_text(timing)
+        self._populate_alerts(state)
+
+    def show_device(self, device_id: str) -> None:
+        """Select one device, e.g. when its notification is clicked."""
+        self._chosen_id = self._shown_id = device_id
+        for row in self._list.get_children():
+            if row.device_id == device_id:
+                self._list.select_row(row)
+                break
+        self._show_current()
 
     # -- Signal handlers ------------------------------------------------
 
@@ -270,6 +371,26 @@ class MainWindow(Gtk.Window):
         self._chosen_id = self._shown_id = row.device_id
         self._preferences.set(_SELECTED_DEVICE_KEY, row.device_id)
         self._show_current()
+
+    def _on_alert_changed(self, *_args) -> None:
+        if self._loading_alerts or self._shown_id is None:
+            return
+        state = self._states.get(self._shown_id)
+        if state is None or not state.has_battery:
+            return
+        enabled = self._alerts_enabled.get_active()
+        for spin in self._alert_spins:
+            spin.set_sensitive(enabled)
+        self._alerts.set_settings(
+            state.id,
+            alerts.AlertSettings(
+                enabled=enabled,
+                thresholds=alerts.clean_thresholds(
+                    int(spin.get_value()) for spin in self._alert_spins
+                ),
+                notify_charged=self._alerts_charged.get_active(),
+            ),
+        )
 
     def _on_refresh_clicked(self, *_args) -> None:
         if self._content.get_visible_child_name() == "device":

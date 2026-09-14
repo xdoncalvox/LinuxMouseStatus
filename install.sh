@@ -27,7 +27,7 @@ echo "==> Installing system packages (requires sudo)..."
 sudo apt update
 sudo apt install -y \
     python3 python3-venv python3-dev \
-    python3-gi gir1.2-gtk-3.0 \
+    python3-gi gir1.2-gtk-3.0 gir1.2-notify-0.7 \
     build-essential libusb-1.0-0-dev libudev-dev libhidapi-hidraw0 \
     upower
 

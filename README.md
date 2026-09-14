@@ -24,9 +24,9 @@ It doesn't implement device protocols itself:
 | Other SteelSeries mice `rivalcfg` supports | No battery; listed in the window only | No |
 | Logitech mice and keyboards on a receiver, and Bluetooth mice and keyboards (through UPower) | Yes | No |
 
-See [ROADMAP.md](ROADMAP.md) for what's planned next: low-battery alerts,
-device settings (DPI, polling rate, sleep timer, button mapping), and
-Logitech settings through Solaar.
+See [ROADMAP.md](ROADMAP.md) for what's planned next: device settings (DPI,
+polling rate, sleep timer, button mapping) and Logitech settings through
+Solaar.
 
 ## Requirements
 
@@ -84,6 +84,11 @@ log what's happening to the terminal:
   "Refresh Now" and "Quit".
 - The window lists every detected device, including wired mice with no
   battery, and remembers which one you last selected.
+- You get a desktop notification when a battery first drops past 20% and
+  again past 10%, and when a charging device reaches full. A warning only
+  repeats after the device charges or climbs back above the level, so a
+  battery hovering around 20% won't nag you. Each device's levels can be
+  changed, or notifications turned off, in the window's Alerts tab.
 
 ## Troubleshooting
 
@@ -145,6 +150,7 @@ linux_wireless_manager/
     tray.py          the mouse and keyboard tray icons
     icons.py         generates the tray/window icons
     window.py        the main window
+    alerts.py        low-battery and fully-charged notifications
     preferences.py   app preferences (~/.config/linux-wireless-manager/)
     config.py        app ID, name, detection interval
 ```

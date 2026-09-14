@@ -9,7 +9,7 @@ Linux Wireless Manager is a GTK3 + AppIndicator tray app for Ubuntu that shows t
 - SteelSeries mice, through [`rivalcfg`](https://github.com/flozz/rivalcfg)
 - anything UPower reports as a battery-powered mouse or keyboard (Logitech receivers, Bluetooth)
 
-No device protocol is implemented here. Planned work (alerts, device settings, Logitech settings through Solaar) is tracked in `ROADMAP.md`.
+No device protocol is implemented here. Planned work (device settings, Logitech settings through Solaar) is tracked in `ROADMAP.md`.
 
 ## Commands
 
@@ -29,6 +29,7 @@ There is no test suite, linter config, or build step. To verify a change, run th
 
 - **GTK / PyGObject / AppIndicator come from apt, not pip.** The venv is created with `--system-site-packages` so it can see them. `requirements.txt` only lists `rivalcfg` (which pulls in `hidapi`, imported as `hid`).
 - The UPower backend uses Gio's D-Bus API directly, so it needs no extra package, only the `upower` daemon.
+- Notifications use libnotify (`gir1.2-notify-0.7`). If the bindings are missing the app still runs; it just doesn't notify, and the Alerts tab says so.
 - `tray.py` tries `AyatanaAppIndicator3` first and falls back to legacy `AppIndicator3`. `main.py` imports GTK, then `devices` (rivalcfg/hidapi), then `app` lazily inside `main()`, so a missing dependency produces a specific install hint instead of a traceback. Keep new GI imports behind that same boundary.
 
 ## Architecture
@@ -78,9 +79,19 @@ Data flows from the device backends (`devices/steelseries.py`, `devices/upower.p
 
 **Window (`window.py`).**
 - A single `MainWindow` is created at startup and hidden, never destroyed, on close.
-- The left side is a `Gtk.ListBox` of devices. The right side is a `Gtk.Stack` with Status / Settings / Alerts tabs; Settings and Alerts are placeholders for ROADMAP Steps 1 and 2.
+- The left side is a `Gtk.ListBox` of devices. The right side is a `Gtk.Stack` with Status / Settings / Alerts tabs. Settings is still a placeholder (ROADMAP Step 2).
+- The Alerts tab is only re-filled when the shown device changes (`_alerts_device_id`), so a poll can't overwrite what the user is editing, and `_loading_alerts` stops the fill-in from counting as an edit.
 - The list is only rebuilt when the snapshot list changes.
 - The user's selected device is remembered in preferences (`selected_device`). While that device is absent, the window shows the first device without overwriting the remembered choice.
+
+**Alerts (`alerts.py`).**
+- `AlertManager.update()` gets every snapshot from `app._on_devices_updated`, on the main thread.
+- Each threshold fires once and only re-arms when the device charges or climbs `_REARM_MARGIN` (5 points) above it. When several thresholds are crossed at once, only the lowest one notifies and all of them are marked as fired.
+- Coarse-level devices need no special case: `estimated_percentage` maps Low to 20 and Critical to 5, which trips the default 20/10 thresholds.
+- "Fully charged" needs a previous reading (`seen`), so a device that is already full at startup stays quiet.
+- Settings live in preferences under `alerts` as `{device_id: {enabled, thresholds, notify_charged}}`, and bad values fall back to defaults instead of raising.
+- Notifications hold a reference in `_shown` per device, because a garbage-collected notification loses its "Show Details" action, and showing a new one closes that device's previous notification.
+- The `desktop-entry` hint is what makes the shell attribute notifications to this app.
 
 **Preferences (`preferences.py`).** JSON at `$XDG_CONFIG_HOME/linux-wireless-manager/config.json`, saved atomically, main thread only. An unreadable file falls back to defaults.
 

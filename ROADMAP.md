@@ -2,7 +2,7 @@
 
 Turns the SteelSeries Rival 650 battery monitor into **Linux Wireless Manager**, a battery and settings manager for wireless mice and keyboards on Linux. There are three tracks: **low-battery alerts**, **mouse settings**, and **more devices** (SteelSeries and Logitech). Step 0 is groundwork that all three depend on.
 
-**Status:** Prerequisites and Step 0 are done (2026-09-10). Next is Step 1.
+**Status:** Prerequisites, Step 0 and Step 1 are done (Step 1 on 2026-09-14). Next is Step 2.
 
 ## Decisions
 
@@ -55,16 +55,17 @@ These come from reading `rivalcfg` 4.17 and checking this machine (Ubuntu 24.04,
   - Each shows the lowest battery among its devices, and its menu lists them all.
   - The SVGs (mouse or keyboard outline, level in 20% steps, charging bolt, unknown) are generated into `~/.cache/linux-wireless-manager/icons/`, with the theme icons as fallback.
   - Checked in the GNOME top bar.
-- [x] **Window rewrite:** a device list on the left and **Status / Settings / Alerts** tabs. Settings and Alerts are placeholders until Steps 1 and 2.
+- [x] **Window rewrite:** a device list on the left and **Status / Settings / Alerts** tabs. Alerts was filled in by Step 1; Settings waits for Step 2.
 - Moved to Step 3b: checking which Logitech devices Solaar can see (only needed for settings).
 
-## Step 1 — Low-battery alerts
+## Step 1 — Low-battery alerts (done)
 
-- [ ] Desktop notifications through libnotify (`gir1.2-notify-0.7`, added to `install.sh`).
-- [ ] Default alert levels are 20% and 10%, set per device in the Alerts tab. For devices that only report a coarse level, "Low" and "Critical" count as the thresholds.
-- [ ] Each alert fires once when the level first drops past it, and only resets after the device charges again or rises 5 points above the threshold. A reading that bounces around the threshold shouldn't send repeated alerts.
-- [ ] "Fully charged" notification when a charging device reaches 100%.
-- [ ] Clicking a notification opens the window on that device.
+- [x] Desktop notifications through libnotify, added to `install.sh` as `gir1.2-notify-0.7`. If the bindings are missing, the app runs without notifications and the Alerts tab says so.
+- [x] Default alert levels are 20% and 10%, set per device in the Alerts tab, which also has an off switch and a "fully charged" switch. Coarse levels need no special case: "Low" counts as 20% and "Critical" as 5%.
+- [x] Each alert fires once and re-arms only after the device charges or climbs 5 points above the threshold. Crossing both levels at once notifies once, about the lower one.
+- [x] "Fully charged" notification, which stays quiet for a device that is already full when the app starts.
+- [x] Clicking "Show Details" on a notification opens the window on that device. GNOME Shell reports the `actions` capability, and the notification is kept referenced so the button keeps working.
+- Settings are stored per device in `~/.config/linux-wireless-manager/config.json` under `alerts`.
 
 ## Step 2 — Mouse settings (SteelSeries via rivalcfg)
 
